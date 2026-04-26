@@ -1,7 +1,8 @@
 "use server";
 
+import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
-import { LoginSchema } from "@/lib/schemas/LoginSchema";
+import { loginSchema, LoginSchema } from "@/lib/schemas/LoginSchema";
 import { UserSchema } from "@/db/schema";
 import { getUserByEmail } from "@/db/utils";
 import { createSession, deleteSession } from "@/lib/session";
@@ -15,9 +16,23 @@ type LoginResult =
 
 export async function login(data: LoginSchema): Promise<LoginResult> {
   try {
-    const [existingUser] = await getUserByEmail(data.email);
+    const validated = loginSchema.safeParse(data);
+    if (!validated.success) {
+      return {
+        status: "error",
+        error: validated.error.issues.map((i) => i.message).join(", "),
+      };
+    }
 
-    if (!existingUser) {
+    const { email, password } = validated.data;
+
+    const [existingUser] = await getUserByEmail(email);
+    const isPasswordMatch = await bcrypt.compare(
+      password,
+      existingUser.passwordHash!,
+    );
+
+    if (!existingUser || !isPasswordMatch) {
       return { status: "error", error: "Invalid email or password" };
     }
 
